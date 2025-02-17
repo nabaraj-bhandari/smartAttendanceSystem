@@ -19,10 +19,6 @@ const char *password = "AR27@69MY";
 // Google Script Web App URL
 String Web_App_URL = "https://script.google.com/macros/s/AKfycbx2UIrgwV3ih8jL7ee1e8YBGWIyXPKswORViJwYgmf-2TWvtc_pzn3hro7mWWz68ZlOAQ/exec";
 
-// Variables for Attendance and Registration Data
-String reg_Info = "";
-String atc_Info = "", atc_Name = "", atc_Date = "", atc_Time_In = "", atc_Time_Out = "";
-
 // RFID UID Storage
 int readsuccess;
 char str[32] = "";
@@ -36,7 +32,6 @@ MFRC522 mfrc522(SS_PIN, RST_PIN);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // Function Prototypes
-String getValue(String data, char separator, int index);
 void byteArray_to_string(byte array[], unsigned int len, char buffer[]);
 void connectToWiFi();
 void http_Req(String str_modes, String str_uid);
@@ -44,13 +39,12 @@ int getUID();
 
 void setup()
 {
-    Serial.begin(115200);
-
-    // Initialize LCD Display
+    // Initialize I2C with ESP32's default pins: SDA = 21, SCL = 22
+    Wire.begin(21, 22);
     lcd.init();
     lcd.backlight();
     lcd.setCursor(0, 0);
-    lcd.print("RFID System");
+    lcd.print("Starting...");
 
     // Initialize LEDs and Buzzer
     pinMode(RED_LED_PIN, OUTPUT);
@@ -58,16 +52,15 @@ void setup()
     pinMode(BUZZER_PIN, OUTPUT);
 
     // Connect to Wi-Fi
-    if (WiFi.status() != WL_CONNECTED)
-    {
-        connectToWiFi();
-    }
+    connectToWiFi();
 
     // Initialize RFID Reader
     SPI.begin();
     mfrc522.PCD_Init();
-    Serial.println("Scan a card...");
 
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Scan a card...");
     delay(1000);
 }
 
@@ -75,12 +68,12 @@ void loop()
 {
     if (getUID())
     {
-        Serial.println("Card UID: " + UID_Result);
-
         // Display UID on LCD
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print("UID: " + UID_Result);
+        lcd.print("UID:");
+        lcd.setCursor(0, 1);
+        lcd.print(UID_Result);
 
         // Send UID to Google Sheets
         http_Req(modes, UID_Result);
@@ -105,32 +98,30 @@ void loop()
         }
 
         delay(2000); // Delay before next scan
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Scan a card...");
     }
 }
 
 // Connect to Wi-Fi Network
 void connectToWiFi()
 {
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        Serial.println("Already connected to Wi-Fi");
-        return;
-    }
-
     WiFi.mode(WIFI_STA);
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
     WiFi.begin(ssid, password);
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Connecting...");
 
     while (WiFi.status() != WL_CONNECTED)
     {
         delay(500);
-        Serial.print(".");
     }
 
-    Serial.println("\nConnected to Wi-Fi");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi Connected");
     delay(1000);
 }
 
@@ -164,50 +155,38 @@ void byteArray_to_string(byte array[], unsigned int len, char buffer[])
     buffer[len * 2] = '\0';
 }
 
-// Extract Data from a Delimited String
-String getValue(String data, char separator, int index)
-{
-    int found = 0;
-    int strIndex[] = {0, -1};
-    int maxIndex = data.length() - 1;
-
-    for (int i = 0; i <= maxIndex && found <= index; i++)
-    {
-        if (data.charAt(i) == separator || i == maxIndex)
-        {
-            found++;
-            strIndex[0] = strIndex[1] + 1;
-            strIndex[1] = (i == maxIndex) ? i + 1 : i;
-        }
-    }
-    return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
-}
-
 // Send HTTP Request to Google Sheets
 void http_Req(String str_modes, String str_uid)
 {
     if (WiFi.status() != WL_CONNECTED)
     {
-        Serial.println("WiFi disconnected.");
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("WiFi Disconnected");
         delay(3000);
         return;
     }
 
     String http_req_url = Web_App_URL + "?sts=" + str_modes + "&uid=" + str_uid;
-    Serial.println("Sending request to Google Sheets...");
-    Serial.println("URL: " + http_req_url);
 
     HTTPClient http;
     http.begin(http_req_url.c_str());
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     int httpCode = http.GET();
-    Serial.println("HTTP Status Code: " + String(httpCode));
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
 
     if (httpCode > 0)
     {
-        String payload = http.getString();
-        Serial.println("Payload: " + payload);
+        lcd.print("Sent UID");
+        lcd.setCursor(0, 1);
+        lcd.print("Success!");
+    }
+    else
+    {
+        lcd.print("Send Failed");
     }
 
-    http.end();
+    delay(2000);
 }
