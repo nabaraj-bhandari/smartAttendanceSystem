@@ -9,15 +9,15 @@
 #define SS_PIN 5
 #define RST_PIN 4
 #define BUZZER_PIN 27
-#define RED_LED_PIN 25
 #define GREEN_LED_PIN 26
+#define RED_LED_PIN 25
 
 // Wi-Fi Credentials
 const char *ssid = "Bed_DHFibernet";
 const char *password = "AR27@69MY";
 
-// Google Script Web App URL
-String Web_App_URL = "https://script.google.com/macros/s/AKfycbx2UIrgwV3ih8jL7ee1e8YBGWIyXPKswORViJwYgmf-2TWvtc_pzn3hro7mWWz68ZlOAQ/exec";
+// Backend API URL
+String api_url = "http://192.168.18.231:5000/api/logs"; // Replace with your backend URL
 
 // RFID UID Storage
 int readsuccess;
@@ -75,29 +75,11 @@ void loop()
         lcd.setCursor(0, 1);
         lcd.print(UID_Result);
 
-        // Send UID to Google Sheets
+        // Send UID to backend API
         http_Req(modes, UID_Result);
 
-        // Indicate operation status with LED & Buzzer
-        if (modes == "atc")
-        {
-            digitalWrite(GREEN_LED_PIN, HIGH);
-            digitalWrite(BUZZER_PIN, HIGH);
-            delay(500);
-            digitalWrite(BUZZER_PIN, LOW);
-            delay(2000);
-            digitalWrite(GREEN_LED_PIN, LOW);
-        }
-        else
-        {
-            digitalWrite(RED_LED_PIN, HIGH);
-            digitalWrite(BUZZER_PIN, HIGH);
-            delay(1000);
-            digitalWrite(BUZZER_PIN, LOW);
-            digitalWrite(RED_LED_PIN, LOW);
-        }
+        delay(200); // Delay before next scan
 
-        delay(2000); // Delay before next scan
         lcd.clear();
         lcd.setCursor(0, 0);
         lcd.print("Scan a card...");
@@ -122,7 +104,7 @@ void connectToWiFi()
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("WiFi Connected");
-    delay(1000);
+    delay(100);
 }
 
 // Get RFID UID
@@ -155,7 +137,7 @@ void byteArray_to_string(byte array[], unsigned int len, char buffer[])
     buffer[len * 2] = '\0';
 }
 
-// Send HTTP Request to Google Sheets
+// Send HTTP Request to Backend API
 void http_Req(String str_modes, String str_uid)
 {
     if (WiFi.status() != WL_CONNECTED)
@@ -167,26 +149,59 @@ void http_Req(String str_modes, String str_uid)
         return;
     }
 
-    String http_req_url = Web_App_URL + "?sts=" + str_modes + "&uid=" + str_uid;
+    // Construct JSON payload
+    String payload = "{\"uid\": \"" + str_uid + "\"}";
 
+    // Debugging: Print the payload
+    Serial.begin(115200);
+    Serial.println("Sending request to: " + api_url);
+    Serial.println("Payload: " + payload);
+
+    // Create HTTP Client and send POST request to backend API
     HTTPClient http;
-    http.begin(http_req_url.c_str());
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    int httpCode = http.GET();
+    http.begin(api_url);
+    http.addHeader("Content-Type", "application/json");
+
+    int httpCode = http.POST(payload);
 
     lcd.clear();
     lcd.setCursor(0, 0);
+
+    // Debugging: Print HTTP status code
+    Serial.print("HTTP Response Code: ");
+    Serial.println(httpCode);
 
     if (httpCode > 0)
     {
         lcd.print("Sent UID");
         lcd.setCursor(0, 1);
         lcd.print("Success!");
+
+        digitalWrite(GREEN_LED_PIN, HIGH);
+        for (int i = 0; i < 2; i++)
+        {
+            digitalWrite(BUZZER_PIN, HIGH);
+            delay(200); // Beep duration
+            digitalWrite(BUZZER_PIN, LOW);
+            delay(200); // Gap between beeps
+        }
+        delay(2000);
+        digitalWrite(GREEN_LED_PIN, LOW);
     }
     else
     {
         lcd.print("Send Failed");
-    }
+        digitalWrite(RED_LED_PIN, HIGH);
 
-    delay(2000);
+        for (int i = 0; i < 3; i++)
+        {
+            digitalWrite(BUZZER_PIN, HIGH);
+            delay(200); // Beep duration
+            digitalWrite(BUZZER_PIN, LOW);
+            delay(200); // Gap between beeps
+        }
+
+        delay(2000);
+        digitalWrite(RED_LED_PIN, LOW);
+    }
 }
